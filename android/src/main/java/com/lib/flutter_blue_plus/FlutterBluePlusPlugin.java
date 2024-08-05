@@ -36,6 +36,7 @@ import android.os.ParcelUuid;
 import android.util.Log;
 import android.util.SparseArray;
 
+import java.nio.BufferUnderflowException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,6 +59,7 @@ import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Method;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -75,6 +77,9 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener;
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 public class FlutterBluePlusPlugin implements
     FlutterPlugin,
@@ -2274,12 +2279,94 @@ public class FlutterBluePlusPlugin implements
                 response.put("secondary_service_uuid", uuidStr(pair.secondary));
             }
             response.put("characteristic_uuid", uuidStr(characteristic.getUuid()));
+            if (characteristic.getUuid().equals(CHARACTERISTIC_LOCATION_DATA)) {
+                if (value == null || value.length == 0) {
+                    response.put("positionValue", "");
+                }else {
+                    LocationData locationData = decodeLocationData(value);
+
+                    assert locationData != null;
+                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                    String positionValueJson = gson.toJson(locationData);
+                    response.put("positionValue", positionValueJson);
+                }
+            }
             response.put("value", bytesToHex(value));
             response.put("success", status == BluetoothGatt.GATT_SUCCESS ? 1 : 0);
             response.put("error_code", status);
             response.put("error_string", gattErrorString(status));
 
             invokeMethodUIThread("OnCharacteristicReceived", response);
+        }
+        final UUID CHARACTERISTIC_LOCATION_DATA = UUID.fromString("003bbdf2-c634-4b3d-ab56-7ec889b89a37");
+        public ByteBuffer newByteBuffer(byte[] bytes) {
+            ByteBuffer b = ByteBuffer.wrap(bytes);
+            // as per BLE spec
+            b.order(ByteOrder.LITTLE_ENDIAN);
+            return b;
+        }
+        @Nullable
+        public LocationData decodeLocationData(byte[] bytes) {
+            if (bytes == null || bytes.length == 0) {
+                return null;
+            }
+            ByteBuffer bb = newByteBuffer(bytes);
+            Position position = null;
+            List<RangingAnchor> distances = null;
+            try {
+                //
+                byte type = bb.get();
+                switch (type) {
+                    case 0:
+                        // position
+                        position = decodePosition(bb);
+                        break;
+                    case 1:
+                        // distances
+                        distances = decodeDistances(bb, bytes);
+                        break;
+                    case 2:
+                        // position and distances
+                        position = decodePosition(bb);
+                        distances = decodeDistances(bb, bytes);
+                        break;
+                    default:
+//                        throw new GattRepresentationException(deviceBleAddress, "unexpected location data type: " + type + ", expecting 0,1 or 2. Content: " + GattEncoder.printByteArray(bytes));
+                }
+            } catch (BufferUnderflowException e) {
+//                throw new GattRepresentationException(deviceBleAddress, "unexpected location data content: buffer underflow. Content: " + GattEncoder.printByteArray(bytes), e);
+            }
+            return new LocationData(position, distances);
+        }
+
+        private short decode2ByteNodeId(ByteBuffer buffer) {
+            // decode a 2 byte node id
+            return buffer.getShort();
+        }
+        private List<RangingAnchor> decodeDistances(ByteBuffer buffer, byte[] bytes) {
+            int count = 0x00FF & buffer.get();
+            List<RangingAnchor> lst = new ArrayList<>(count);
+            while (count-- > 0) {
+                // decode node id first
+                short nodeId = decode2ByteNodeId(buffer);
+                int distance = buffer.getInt();
+                byte qualityFactor = buffer.get();
+                lst.add(new RangingAnchor(nodeId, distance, qualityFactor));
+            }
+            if (buffer.remaining() > 0) {
+//                throw new GattRepresentationException(deviceBleAddress, "unexpected location data content: buffer overflow. Content: " + GattEncoder.printByteArray(bytes));
+            }
+            return lst;
+        }
+
+        @NonNull
+        private Position decodePosition(ByteBuffer buff) {
+            int rX = buff.getInt();
+            int rY = buff.getInt();
+            int rZ = buff.getInt();
+            Position r = new Position(rX, rY, rZ);
+            r.qualityFactor = buff.get();
+            return r;
         }
 
         @Override

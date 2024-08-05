@@ -80,6 +80,16 @@ class BluetoothCharacteristic {
       .where((p) => p.success == true)
       .map((c) => c.value);
 
+  Stream<String> get onPostionReceived => FlutterBluePlus._methodStream.stream
+      .where((m) => m.method == "OnCharacteristicReceived")
+      .map((m) => m.arguments)
+      .map((args) => BmCharacteristicData.fromMap(args))
+      .where((p) => p.remoteId == remoteId)
+      .where((p) => p.serviceUuid == serviceUuid)
+      .where((p) => p.characteristicUuid == characteristicUuid)
+      .where((p) => p.success == true)
+      .map((c) => c.positionValue);
+
   /// return true if we're subscribed to this characteristic
   ///   -  you can subscribe using setNotifyValue(true)
   bool get isNotifying {

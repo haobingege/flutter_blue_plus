@@ -453,6 +453,7 @@ class BmCharacteristicData {
   final Guid? secondaryServiceUuid;
   final Guid characteristicUuid;
   final List<int> value;
+  final String positionValue;
   final bool success;
   final int errorCode;
   final String errorString;
@@ -463,6 +464,7 @@ class BmCharacteristicData {
     required this.secondaryServiceUuid,
     required this.characteristicUuid,
     required this.value,
+    required this.positionValue,
     required this.success,
     required this.errorCode,
     required this.errorString,
@@ -475,6 +477,7 @@ class BmCharacteristicData {
       secondaryServiceUuid: json['secondary_service_uuid'] != null ? Guid(json['secondary_service_uuid']) : null,
       characteristicUuid: Guid(json['characteristic_uuid']),
       value: _hexDecode(json['value']),
+      positionValue: json['positionValue'],
       success: json['success'] != 0,
       errorCode: json['error_code'],
       errorString: json['error_string'],
